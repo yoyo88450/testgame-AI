@@ -3,6 +3,8 @@ import sys
 from monster import Monster, Attack
 from items import Item
 import random
+import os
+import unicodedata
 
 # Initialisation de Pygame
 pygame.init()
@@ -68,7 +70,13 @@ class BattleScene:
         self.message = ""
         self.message_timer = 0
         self.state = "MAIN"  # MAIN, ATTACK, ITEMS, SWITCH
-        
+        # Ajout pour gestion objets
+        self.item_buttons = []
+        self.selected_item = None
+        self.target_monster_buttons = []
+        self.selected_target = None
+        self.switch_monster_buttons = []
+
     def create_buttons(self):
         self.main_buttons = [
             Button(10, WINDOW_HEIGHT - 180, BUTTON_WIDTH, BUTTON_HEIGHT, "Attaquer"),
@@ -85,19 +93,57 @@ class BattleScene:
             y = WINDOW_HEIGHT - 180 + (i // 2) * (BUTTON_HEIGHT + 10)
             self.attack_buttons.append(Button(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, 
                                            f"{attack.name} ({attack.damage})"))
+        # Création des boutons d'objets
+        self.item_buttons = []
+        y_start = WINDOW_HEIGHT - 180
+        for i, (item_name, (item, qty)) in enumerate(self.inventory.items()):
+            x = 10 + (i % 2) * (BUTTON_WIDTH + 10)
+            y = y_start + (i // 2) * (BUTTON_HEIGHT + 10)
+            text = f"{item.name} ({qty}x)"
+            self.item_buttons.append(Button(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, text))
+        # Boutons pour choisir le monstre cible (pour revive)
+        self.target_monster_buttons = []
+        y_start = WINDOW_HEIGHT - 180
+        for i, monster in enumerate(self.player_monsters):
+            if hasattr(monster, 'is_fainted') and monster.is_fainted:
+                x = 10 + (i % 2) * (BUTTON_WIDTH + 10)
+                y = y_start + (i // 2) * (BUTTON_HEIGHT + 10)
+                text = f"{monster.name} (K.O.)"
+                self.target_monster_buttons.append(Button(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, text))
     
+    def normalize_monster_filename(self, name):
+        # Enlève les accents, met en minuscules et remplace les espaces
+        name = unicodedata.normalize('NFD', name).encode('ascii', 'ignore').decode('utf-8')
+        return name.lower().replace(' ', '')
+
+    def load_monster_image(self, monster_name):
+        filename = self.normalize_monster_filename(monster_name)
+        img_path = os.path.join('assets', f'{filename}.png')
+        if os.path.exists(img_path):
+            try:
+                return pygame.image.load(img_path)
+            except Exception as e:
+                print(f"Erreur chargement image {img_path}: {e}")
+                return None
+        else:
+            print(f"Image non trouvée : {img_path}")
+        return None
+
     def draw_monster_info(self, monster, x, y, is_enemy=False):
-        # Dessiner un rectangle pour le monstre
-        monster_rect = pygame.Rect(x, y, MONSTER_SIZE, MONSTER_SIZE)
-        pygame.draw.rect(screen, GRAY, monster_rect)
-        
+        # Afficher l'image PNG si elle existe
+        img = self.load_monster_image(monster.name)
+        if img:
+            img = pygame.transform.scale(img, (MONSTER_SIZE, MONSTER_SIZE))
+            screen.blit(img, (x, y))
+        else:
+            monster_rect = pygame.Rect(x, y, MONSTER_SIZE, MONSTER_SIZE)
+            pygame.draw.rect(screen, GRAY, monster_rect)
         # Barre de vie
         health_percent = monster.current_hp / monster.max_hp
         health_width = MONSTER_SIZE * health_percent
         health_rect = pygame.Rect(x, y + MONSTER_SIZE + 10, MONSTER_SIZE, 20)
         pygame.draw.rect(screen, RED, health_rect)
         pygame.draw.rect(screen, GREEN, (x, y + MONSTER_SIZE + 10, health_width, 20))
-        
         # Informations du monstre
         name_text = FONT.render(f"{monster.name} Nv.{monster.level}", True, BLACK)
         hp_text = FONT.render(f"PV: {monster.current_hp}/{monster.max_hp}", True, BLACK)
@@ -114,12 +160,28 @@ class BattleScene:
             if self.message_timer == 0:
                 self.message = ""
 
+    def draw_monster_selection(self):
+        # Affiche tous les monstres du joueur en bas de l'écran
+        y = WINDOW_HEIGHT - 80
+        for i, monster in enumerate(self.player_monsters):
+            x = 20 + i * (MONSTER_SIZE // 2 + 20)
+            rect = pygame.Rect(x, y, MONSTER_SIZE // 2, MONSTER_SIZE // 2)
+            color = GREEN if monster == self.current_monster else GRAY
+            pygame.draw.rect(screen, color, rect)
+            name_text = FONT.render(monster.name, True, BLACK)
+            screen.blit(name_text, (x + 5, y + MONSTER_SIZE // 2 - 25))
+            pv_text = FONT.render(f"{monster.current_hp}/{monster.max_hp}", True, BLACK)
+            screen.blit(pv_text, (x + 5, y + MONSTER_SIZE // 2 - 5))
+
     def draw(self):
         screen.fill(WHITE)
         
         # Dessiner les monstres
         self.draw_monster_info(self.enemy_monster, WINDOW_WIDTH - MONSTER_SIZE - 50, 50, True)
         self.draw_monster_info(self.current_monster, 50, WINDOW_HEIGHT - MONSTER_SIZE - 150)
+        
+        # Dessiner la zone de sélection des monstres
+        self.draw_monster_selection()
         
         # Dessiner le message
         if self.message:
@@ -132,16 +194,78 @@ class BattleScene:
             for button in self.main_buttons:
                 button.draw(screen)
         elif self.state == "ATTACK":
-            for button in self.attack_buttons:
+            # Affiche les boutons d'attaque sous la zone de sélection
+            y_offset = WINDOW_HEIGHT - 20 - BUTTON_HEIGHT
+            for i, button in enumerate(self.attack_buttons):
+                button.rect.y = y_offset - (i // 2) * (BUTTON_HEIGHT + 10)
+                button.rect.x = 10 + (i % 2) * (BUTTON_WIDTH + 10)
+                button.draw(screen)
+            self.back_button.rect.y = y_offset
+            self.back_button.rect.x = 10 + 2 * (BUTTON_WIDTH + 10)
+            self.back_button.draw(screen)
+        elif self.state == "ITEMS":
+            for button in self.item_buttons:
+                button.draw(screen)
+            self.back_button.draw(screen)
+            # Si on doit choisir une cible pour revive
+            if self.selected_item == 'revive' and self.target_monster_buttons:
+                for button in self.target_monster_buttons:
+                    button.draw(screen)
+        elif self.state == "SWITCH":
+            for button in self.switch_monster_buttons:
                 button.draw(screen)
             self.back_button.draw(screen)
         
         pygame.display.flip()
 
+    def set_current_monster(self, monster):
+        self.current_monster = monster
+        self.create_buttons()
+
+    def set_inventory(self, inventory):
+        self.inventory = inventory
+        self.create_buttons()
+
+    def create_switch_buttons(self):
+        self.switch_monster_buttons = []
+        y_start = WINDOW_HEIGHT - 180
+        for i, monster in enumerate(self.player_monsters):
+            if hasattr(monster, 'is_alive') and monster.is_alive() and monster != self.current_monster:
+                x = 10 + (i % 2) * (BUTTON_WIDTH + 10)
+                y = y_start + (i // 2) * (BUTTON_HEIGHT + 10)
+                text = f"{monster.name} (PV: {monster.current_hp}/{monster.max_hp})"
+                self.switch_monster_buttons.append(Button(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, text))
+
+    def show_upgrade_dialog(self):
+        dialog_rect = pygame.Rect(150, 150, 500, 300)
+        pygame.draw.rect(screen, WHITE, dialog_rect)
+        pygame.draw.rect(screen, BLACK, dialog_rect, 3)
+        title = LARGE_FONT.render("Amélioration des monstres !", True, BLACK)
+        screen.blit(title, (dialog_rect.x + 60, dialog_rect.y + 20))
+        y = dialog_rect.y + 80
+        for monster in self.player_monsters:
+            if hasattr(monster, 'is_fainted') and not monster.is_fainted:
+                up_text = FONT.render(f"{monster.name} : +10 PV, +2 Attaque", True, BLACK)
+                screen.blit(up_text, (dialog_rect.x + 40, y))
+                y += 30
+        # Boutons Oui/Non
+        self.btn_yes = Button(dialog_rect.x + 80, dialog_rect.y + 220, 120, 50, "Oui", GREEN)
+        self.btn_no = Button(dialog_rect.x + 300, dialog_rect.y + 220, 120, 50, "Non", RED)
+        self.btn_yes.draw(screen)
+        self.btn_no.draw(screen)
+        pygame.display.flip()
+
+    def upgrade_monsters(self):
+        for monster in self.player_monsters:
+            if hasattr(monster, 'is_fainted') and not monster.is_fainted:
+                monster.max_hp += 10
+                monster.current_hp = monster.max_hp
+                if hasattr(monster, 'attack_power'):
+                    monster.attack_power += 2
+
     def handle_event(self, event):
         if event.type == pygame.QUIT:
             return "QUIT"
-            
         if self.state == "MAIN":
             for i, button in enumerate(self.main_buttons):
                 if button.handle_event(event):
@@ -150,9 +274,9 @@ class BattleScene:
                     elif i == 1:  # Objets
                         self.state = "ITEMS"
                     elif i == 2:  # Changer
+                        self.create_switch_buttons()
                         self.state = "SWITCH"
                     return None
-                    
         elif self.state == "ATTACK":
             for i, button in enumerate(self.attack_buttons):
                 if button.handle_event(event):
@@ -162,11 +286,74 @@ class BattleScene:
                     self.current_monster.heal(attack.heal)
                     self.show_message(f"{self.current_monster.name} utilise {attack.name}!")
                     self.state = "MAIN"
+                    self.create_buttons()
                     return "ENEMY_TURN"
-                    
             if self.back_button.handle_event(event):
                 self.state = "MAIN"
-                
+                self.create_buttons()
+        elif self.state == "ITEMS":
+            for i, button in enumerate(self.item_buttons):
+                if button.handle_event(event):
+                    item_name = list(self.inventory.keys())[i]
+                    item, qty = self.inventory[item_name]
+                    if qty <= 0:
+                        self.show_message("Plus de cet objet!")
+                        return None
+                    if item_name == 'revive':
+                        self.selected_item = 'revive'
+                        self.target_monster_buttons = []
+                        for j, monster in enumerate(self.player_monsters):
+                            if hasattr(monster, 'is_fainted') and monster.is_fainted:
+                                x = 10 + (j % 2) * (BUTTON_WIDTH + 10)
+                                y = WINDOW_HEIGHT - 180 + (j // 2) * (BUTTON_HEIGHT + 10)
+                                text = f"{monster.name} (K.O.)"
+                                self.target_monster_buttons.append(Button(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, text))
+                        if not self.target_monster_buttons:
+                            self.show_message("Aucun monstre à ressusciter!")
+                            self.selected_item = None
+                        return None
+                    else:
+                        success, message = item.use(self.current_monster)
+                        if success:
+                            self.inventory[item_name] = (item, qty - 1)
+                            self.set_inventory(self.inventory)
+                        self.show_message(message)
+                        self.state = "MAIN"
+                        self.create_buttons()
+                        return "ENEMY_TURN"
+            if self.selected_item == 'revive' and self.target_monster_buttons:
+                for j, button in enumerate(self.target_monster_buttons):
+                    if button.handle_event(event):
+                        monster = [m for m in self.player_monsters if hasattr(m, 'is_fainted') and m.is_fainted][j]
+                        item, qty = self.inventory['revive']
+                        success, message = item.use(monster)
+                        if success:
+                            self.inventory['revive'] = (item, qty - 1)
+                            self.set_inventory(self.inventory)
+                        self.show_message(message)
+                        self.selected_item = None
+                        self.state = "MAIN"
+                        self.create_buttons()
+                        return "ENEMY_TURN"
+            if self.back_button.handle_event(event):
+                self.state = "MAIN"
+                self.selected_item = None
+                self.target_monster_buttons = []
+                self.create_buttons()
+                return None
+        elif self.state == "SWITCH":
+            for i, button in enumerate(self.switch_monster_buttons):
+                if button.handle_event(event):
+                    monster = [m for m in self.player_monsters if hasattr(m, 'is_alive') and m.is_alive() and m != self.current_monster][i]
+                    self.set_current_monster(monster)
+                    self.show_message(f"{monster.name} entre en combat !")
+                    self.state = "MAIN"
+                    self.create_buttons()
+                    return None
+            if self.back_button.handle_event(event):
+                self.state = "MAIN"
+                self.create_buttons()
+                return None
         return None
 
 def main():
@@ -188,6 +375,9 @@ def main():
     
     # Boucle principale
     running = True
+    battles_won = 0
+    show_upgrade = False
+    upgrade_done = False
     while running:
         for event in pygame.event.get():
             result = battle_scene.handle_event(event)
@@ -200,7 +390,45 @@ def main():
                 battle_scene.current_monster.take_damage(damage)
                 enemy_monster.heal(attack.heal)
                 battle_scene.show_message(f"{enemy_monster.name} utilise {attack.name}!")
-        
+
+        # Vérification victoire
+        if not enemy_monster.is_alive():
+            if not show_upgrade:
+                show_upgrade = True
+                upgrade_done = False
+        if show_upgrade:
+            battle_scene.show_upgrade_dialog()
+            if not upgrade_done:
+                battle_scene.upgrade_monsters()
+                upgrade_done = True
+            for event in pygame.event.get():
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if battle_scene.btn_yes.rect.collidepoint(event.pos):
+                        show_upgrade = False
+                        upgrade_done = False
+                        # Apparition d'un nouvel ennemi
+                        from game import get_player_average_level, create_enemy_monster
+                        avg_level = get_player_average_level(player_monsters) if hasattr(player_monsters[0], 'level') else 1
+                        enemy_monster = create_enemy_monster(avg_level)
+                        battle_scene.enemy_monster = enemy_monster
+                        battle_scene.show_message(f"Un {enemy_monster.name} de niveau {enemy_monster.level} apparaît !")
+                        battle_scene.create_buttons()
+                    elif battle_scene.btn_no.rect.collidepoint(event.pos):
+                        running = False
+                        show_upgrade = False
+                        upgrade_done = False
+        # Vérification défaite
+        if hasattr(battle_scene.current_monster, 'is_alive') and not battle_scene.current_monster.is_alive():
+            alive_monsters = [m for m in player_monsters if hasattr(m, 'is_alive') and m.is_alive()]
+            if not alive_monsters:
+                battle_scene.show_message(f"Tous vos monstres sont K.O.! Vous avez perdu après {battles_won} victoires.")
+                pygame.time.wait(2000)
+                running = False
+            else:
+                battle_scene.current_monster = alive_monsters[0]
+                battle_scene.create_buttons()
+                battle_scene.show_message(f"{battle_scene.current_monster.name} entre en combat !")
+
         battle_scene.update_message()
         battle_scene.draw()
         clock.tick(60)
