@@ -161,61 +161,51 @@ class BattleScene:
                 self.message = ""
 
     def draw_monster_selection(self):
-        # Affiche tous les monstres du joueur en bas de l'écran
-        y = WINDOW_HEIGHT - 80
+        # Affiche des petits ronds bien visibles sous les PV du monstre actif
+        y = WINDOW_HEIGHT - 120
         for i, monster in enumerate(self.player_monsters):
-            x = 20 + i * (MONSTER_SIZE // 2 + 20)
-            rect = pygame.Rect(x, y, MONSTER_SIZE // 2, MONSTER_SIZE // 2)
-            color = GREEN if monster == self.current_monster else GRAY
-            pygame.draw.rect(screen, color, rect)
-            name_text = FONT.render(monster.name, True, BLACK)
-            screen.blit(name_text, (x + 5, y + MONSTER_SIZE // 2 - 25))
-            pv_text = FONT.render(f"{monster.current_hp}/{monster.max_hp}", True, BLACK)
-            screen.blit(pv_text, (x + 5, y + MONSTER_SIZE // 2 - 5))
+            x = 40 + i * (MONSTER_SIZE // 2 + 40)
+            # Dessin du rond
+            circle_color = GREEN if monster == self.current_monster else GRAY
+            center_x = x + MONSTER_SIZE // 8
+            center_y = y + 60
+            pygame.draw.circle(screen, circle_color, (center_x, center_y), 14)
+
+    def draw_menu_zone(self, buttons):
+        # Zone fixe pour les boutons menu et sous-menus
+        menu_rect = pygame.Rect(0, WINDOW_HEIGHT - 40, WINDOW_WIDTH, 40)
+        pygame.draw.rect(screen, GRAY, menu_rect)
+        pygame.draw.rect(screen, BLACK, menu_rect, 2)
+        # Boutons plus petits
+        for i, button in enumerate(buttons):
+            button.rect.y = WINDOW_HEIGHT - 35
+            button.rect.x = 10 + i * (BUTTON_WIDTH // 1.5 + 10)
+            button.rect.width = int(BUTTON_WIDTH // 1.5)
+            button.rect.height = int(BUTTON_HEIGHT // 1.5)
+            button.draw(screen)
 
     def draw(self):
         screen.fill(WHITE)
-        
-        # Dessiner les monstres
         self.draw_monster_info(self.enemy_monster, WINDOW_WIDTH - MONSTER_SIZE - 50, 50, True)
         self.draw_monster_info(self.current_monster, 50, WINDOW_HEIGHT - MONSTER_SIZE - 150)
-        
-        # Dessiner la zone de sélection des monstres
         self.draw_monster_selection()
-        
         # Dessiner le message
         if self.message:
             text = FONT.render(self.message, True, BLACK)
             text_rect = text.get_rect(center=(WINDOW_WIDTH // 2, 30))
             screen.blit(text, text_rect)
-        
-        # Dessiner les boutons selon l'état
+        # Zone fixe pour tous les menus
         if self.state == "MAIN":
-            for button in self.main_buttons:
-                button.draw(screen)
+            self.draw_menu_zone(self.main_buttons)
         elif self.state == "ATTACK":
-            # Affiche les boutons d'attaque sous la zone de sélection
-            y_offset = WINDOW_HEIGHT - 20 - BUTTON_HEIGHT
-            for i, button in enumerate(self.attack_buttons):
-                button.rect.y = y_offset - (i // 2) * (BUTTON_HEIGHT + 10)
-                button.rect.x = 10 + (i % 2) * (BUTTON_WIDTH + 10)
-                button.draw(screen)
-            self.back_button.rect.y = y_offset
-            self.back_button.rect.x = 10 + 2 * (BUTTON_WIDTH + 10)
-            self.back_button.draw(screen)
+            self.draw_menu_zone(self.attack_buttons + [self.back_button])
         elif self.state == "ITEMS":
-            for button in self.item_buttons:
-                button.draw(screen)
-            self.back_button.draw(screen)
-            # Si on doit choisir une cible pour revive
+            self.draw_menu_zone(self.item_buttons + [self.back_button])
             if self.selected_item == 'revive' and self.target_monster_buttons:
                 for button in self.target_monster_buttons:
                     button.draw(screen)
         elif self.state == "SWITCH":
-            for button in self.switch_monster_buttons:
-                button.draw(screen)
-            self.back_button.draw(screen)
-        
+            self.draw_menu_zone(self.switch_monster_buttons + [self.back_button])
         pygame.display.flip()
 
     def set_current_monster(self, monster):
