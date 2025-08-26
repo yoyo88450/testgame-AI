@@ -10,6 +10,41 @@ def create_items():
         'attack_boost': Item("Protéine", "Augmente l'attaque de 10 points", "attack_boost", 10)
     }
 
+def create_enemy_monster(player_avg_level):
+    # Liste des monstres ennemis possibles
+    enemy_types = [
+        ("Hydre", [
+            Attack("Morsure Venimeuse", 35),
+            Attack("Régénération", 0, 25),
+            Attack("Souffle Toxique", 30),
+            Attack("Queue Fouettante", 20)
+        ], 110),
+        ("Chimère", [
+            Attack("Souffle de Feu", 40),
+            Attack("Rugissement", 25),
+            Attack("Griffes Acérées", 30),
+            Attack("Morsure", 20)
+        ], 100),
+        ("Minotaure", [
+            Attack("Charge Brutale", 45),
+            Attack("Coup de Corne", 35),
+            Attack("Piétinement", 25),
+            Attack("Fureur", 0, 20)
+        ], 130),
+        ("Basilic", [
+            Attack("Regard Pétrifiant", 40),
+            Attack("Crocs Venimeux", 30),
+            Attack("Écailles Protectrices", 0, 25),
+            Attack("Fouet Queue", 20)
+        ], 95)
+    ]
+    
+    # Choix aléatoire du monstre
+    name, attacks, base_hp = random.choice(enemy_types)
+    # Le niveau de l'ennemi est basé sur le niveau moyen du joueur
+    level = max(1, player_avg_level - 1 + random.randint(0, 2))
+    return Monster(name, base_hp, attacks, level)
+
 def create_monster_list():
     # Création des attaques
     fire_blast = Attack("Boule de Feu", 30)
@@ -53,12 +88,23 @@ def use_item(inventory, item_name, monster):
                 return False
     return False
 
+def calculate_exp_reward(enemy_level):
+    # Base EXP + bonus selon le niveau
+    return 50 + (20 * enemy_level)
+
+def get_player_average_level(monsters):
+    active_monsters = [m for m in monsters if not m.is_fainted]
+    if not active_monsters:
+        return 1
+    return sum(m.level for m in active_monsters) // len(active_monsters)
+
 def main():
     # Initialisation
     print("Bienvenue dans le jeu de combat de monstres!")
     monsters = create_monster_list()
     player_monsters = monsters.copy()
     current_monster = player_monsters[0]
+    battles_won = 0
     
     # Création de l'inventaire initial
     items = create_items()
@@ -168,7 +214,33 @@ def main():
         # Vérification de la victoire
         if not enemy_monster.is_alive():
             print(f"\nFélicitations! Vous avez vaincu {enemy_monster.name}!")
-            break
+            battles_won += 1
+            
+            # Attribution de l'expérience
+            exp_reward = calculate_exp_reward(enemy_monster.level)
+            print(f"\nVos monstres gagnent {exp_reward} points d'expérience!")
+            
+            for monster in player_monsters:
+                if not monster.is_fainted:
+                    if monster.gain_exp(exp_reward):
+                        # Le monstre a gagné un niveau, restaurons ses PV
+                        monster.update_stats()
+            
+            # Proposition de continuer ou quitter
+            while True:
+                choice = input("\nVoulez-vous continuer à combattre ? (o/n) ").lower()
+                if choice in ['o', 'n']:
+                    break
+                print("Veuillez répondre par 'o' ou 'n'")
+            
+            if choice == 'n':
+                print(f"\nMerci d'avoir joué! Vous avez gagné {battles_won} combats!")
+                break
+            
+            # Création d'un nouveau monstre ennemi
+            avg_level = get_player_average_level(player_monsters)
+            enemy_monster = create_enemy_monster(avg_level)
+            print(f"\nUn {enemy_monster.name} de niveau {enemy_monster.level} apparaît!")
 
         # Tour de l'ennemi
         print(f"\nTour de {enemy_monster.name}!")

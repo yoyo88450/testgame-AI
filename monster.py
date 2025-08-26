@@ -1,11 +1,38 @@
 class Monster:
-    def __init__(self, name, hp, attacks):
+    def __init__(self, name, hp, attacks, level=1):
         self.name = name
-        self.max_hp = hp
-        self.current_hp = hp
-        self.attacks = attacks
+        self.base_hp = hp
+        self.level = level
+        self.exp = 0
+        self.exp_to_next_level = 100 * self.level
         self.attack_boost = 0
         self.is_fainted = False
+        self.attacks = attacks
+        self.update_stats()
+    
+    def update_stats(self):
+        # Les stats augmentent avec le niveau
+        self.max_hp = int(self.base_hp * (1 + 0.1 * (self.level - 1)))
+        self.current_hp = self.max_hp
+    
+    def gain_exp(self, exp_amount):
+        self.exp += exp_amount
+        leveled_up = False
+        while self.exp >= self.exp_to_next_level:
+            self.level_up()
+            leveled_up = True
+        return leveled_up
+    
+    def level_up(self):
+        self.level += 1
+        self.exp -= self.exp_to_next_level
+        self.exp_to_next_level = 100 * self.level
+        old_max_hp = self.max_hp
+        self.update_stats()
+        hp_gain = self.max_hp - old_max_hp
+        print(f"\n{self.name} passe au niveau {self.level}!")
+        print(f"PV max +{hp_gain} (nouveau total: {self.max_hp})")
+        print(f"Puissance d'attaque augmentée!")
     
     def is_alive(self):
         return self.current_hp > 0 and not self.is_fainted
