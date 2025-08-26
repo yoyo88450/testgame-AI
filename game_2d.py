@@ -367,8 +367,42 @@ def main():
     running = True
     battles_won = 0
     show_upgrade = False
-    upgrade_done = False
+    upgrade_pending = False
+    upgrade_applied = False
     while running:
+        # Gestion du pop-up d'amélioration dans une boucle dédiée
+        if show_upgrade:
+            battle_scene.show_upgrade_dialog()
+            if not upgrade_applied:
+                battle_scene.upgrade_monsters()
+                upgrade_applied = True
+            waiting_choice = True
+            while waiting_choice:
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        running = False
+                        waiting_choice = False
+                    elif event.type == pygame.MOUSEBUTTONDOWN:
+                        if battle_scene.btn_yes.rect.collidepoint(event.pos):
+                            show_upgrade = False
+                            upgrade_applied = False
+                            # Apparition d'un nouvel ennemi
+                            from game import get_player_average_level, create_enemy_monster
+                            avg_level = get_player_average_level(player_monsters) if hasattr(player_monsters[0], 'level') else 1
+                            enemy_monster = create_enemy_monster(avg_level)
+                            battle_scene.enemy_monster = enemy_monster
+                            battle_scene.show_message(f"Un {enemy_monster.name} de niveau {enemy_monster.level} apparaît !")
+                            battle_scene.create_buttons()
+                            waiting_choice = False
+                        elif battle_scene.btn_no.rect.collidepoint(event.pos):
+                            running = False
+                            show_upgrade = False
+                            upgrade_applied = False
+                            waiting_choice = False
+                clock.tick(60)
+            continue  # Recommence la boucle principale après le choix
+
+        # Gestion normale des événements
         for event in pygame.event.get():
             result = battle_scene.handle_event(event)
             if result == "QUIT":
@@ -385,28 +419,7 @@ def main():
         if not enemy_monster.is_alive():
             if not show_upgrade:
                 show_upgrade = True
-                upgrade_done = False
-        if show_upgrade:
-            battle_scene.show_upgrade_dialog()
-            if not upgrade_done:
-                battle_scene.upgrade_monsters()
-                upgrade_done = True
-            for event in pygame.event.get():
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    if battle_scene.btn_yes.rect.collidepoint(event.pos):
-                        show_upgrade = False
-                        upgrade_done = False
-                        # Apparition d'un nouvel ennemi
-                        from game import get_player_average_level, create_enemy_monster
-                        avg_level = get_player_average_level(player_monsters) if hasattr(player_monsters[0], 'level') else 1
-                        enemy_monster = create_enemy_monster(avg_level)
-                        battle_scene.enemy_monster = enemy_monster
-                        battle_scene.show_message(f"Un {enemy_monster.name} de niveau {enemy_monster.level} apparaît !")
-                        battle_scene.create_buttons()
-                    elif battle_scene.btn_no.rect.collidepoint(event.pos):
-                        running = False
-                        show_upgrade = False
-                        upgrade_done = False
+                upgrade_applied = False
         # Vérification défaite
         if hasattr(battle_scene.current_monster, 'is_alive') and not battle_scene.current_monster.is_alive():
             alive_monsters = [m for m in player_monsters if hasattr(m, 'is_alive') and m.is_alive()]
