@@ -1,5 +1,14 @@
 import random
 from monster import Monster, Attack
+from items import Item
+
+def create_items():
+    return {
+        'potion': Item("Potion", "Restaure 50 PV", "heal", 50),
+        'super_potion': Item("Super Potion", "Restaure 100 PV", "heal", 100),
+        'revive': Item("Rappel", "Ressuscite un monstre avec 50% de ses PV", "revive", 50),
+        'attack_boost': Item("Protéine", "Augmente l'attaque de 10 points", "attack_boost", 10)
+    }
 
 def create_monster_list():
     # Création des attaques
@@ -25,12 +34,40 @@ def display_attacks(monster):
     for i, attack in enumerate(monster.attacks, 1):
         print(f"{i}. {attack.name} (Dégâts: {attack.damage}, Soin: {attack.heal})")
 
+def display_inventory(inventory):
+    print("\nInventaire:")
+    for item_name, (item, quantity) in inventory.items():
+        print(f"{item_name}: {quantity}x {item.description}")
+
+def use_item(inventory, item_name, monster):
+    if item_name in inventory:
+        item, quantity = inventory[item_name]
+        if quantity > 0:
+            success, message = item.use(monster)
+            if success:
+                inventory[item_name] = (item, quantity - 1)
+                print(message)
+                return True
+            else:
+                print(message)
+                return False
+    return False
+
 def main():
     # Initialisation
     print("Bienvenue dans le jeu de combat de monstres!")
     monsters = create_monster_list()
     player_monsters = monsters.copy()
     current_monster = player_monsters[0]
+    
+    # Création de l'inventaire initial
+    items = create_items()
+    inventory = {
+        'potion': (items['potion'], 3),
+        'super_potion': (items['super_potion'], 1),
+        'revive': (items['revive'], 1),
+        'attack_boost': (items['attack_boost'], 2)
+    }
     enemy_monster = Monster("Boss", 150, [
         Attack("Frappe Puissante", 30),
         Attack("Régénération", 0, 25),
@@ -50,6 +87,7 @@ def main():
         print("Actions disponibles:")
         print("1-4: Utiliser une attaque")
         print("5: Changer de monstre")
+        print("6: Utiliser un objet")
         
         display_attacks(current_monster)
         
@@ -57,7 +95,7 @@ def main():
         while True:
             try:
                 choice = int(input("\nQue souhaitez-vous faire ? "))
-                if 1 <= choice <= 5:
+                if 1 <= choice <= 6:
                     break
                 print("Choix invalide!")
             except ValueError:
@@ -80,10 +118,51 @@ def main():
                 except ValueError:
                     print("Veuillez entrer un nombre!")
         else:
+            if choice == 6:
+                # Utilisation d'un objet
+                display_inventory(inventory)
+                print("\nObjets disponibles:")
+                available_items = [name for name, (item, qty) in inventory.items() if qty > 0]
+                
+                if not available_items:
+                    print("Vous n'avez plus d'objets!")
+                    continue
+                
+                for i, item_name in enumerate(available_items, 1):
+                    item, qty = inventory[item_name]
+                    print(f"{i}. {item.name} ({qty}x) - {item.description}")
+                
+                try:
+                    item_choice = int(input("\nChoisissez un objet (0 pour annuler): "))
+                    if item_choice == 0:
+                        continue
+                    if 1 <= item_choice <= len(available_items):
+                        item_name = available_items[item_choice - 1]
+                        
+                        # Si c'est un objet de résurrection, montrer tous les monstres K.O.
+                        if item_name == 'revive':
+                            fainted_monsters = [m for m in player_monsters if m.is_fainted]
+                            if not fainted_monsters:
+                                print("Aucun monstre n'a besoin d'être ressuscité!")
+                                continue
+                            print("\nChoisissez un monstre à ressusciter:")
+                            for i, monster in enumerate(fainted_monsters, 1):
+                                print(f"{i}. {monster.name}")
+                            monster_choice = int(input("Numéro du monstre: ")) - 1
+                            if 0 <= monster_choice < len(fainted_monsters):
+                                target_monster = fainted_monsters[monster_choice]
+                                use_item(inventory, item_name, target_monster)
+                        else:
+                            use_item(inventory, item_name, current_monster)
+                except ValueError:
+                    print("Choix invalide!")
+                continue
+            
             # Attaque du joueur
             attack = current_monster.attacks[choice - 1]
             print(f"\n{current_monster.name} utilise {attack.name}!")
-            enemy_monster.take_damage(attack.damage)
+            damage = current_monster.get_attack_damage(attack.damage)
+            enemy_monster.take_damage(damage)
             current_monster.heal(attack.heal)
 
         # Vérification de la victoire
