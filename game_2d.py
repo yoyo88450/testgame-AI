@@ -19,21 +19,33 @@ BUTTON_WIDTH = 180
 BUTTON_MARGIN = 10
 INFO_HEIGHT = 100
 
-# Colors
+
+# --- Design Pokémon ---
 WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
+BLACK = (40, 40, 40)
 GRAY = (128, 128, 128)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
+POKE_BG_TOP = (180, 220, 255)
+POKE_BG_BOTTOM = (120, 180, 255)
+POKE_PANEL = (255, 255, 255)
+POKE_PANEL_BORDER = (80, 120, 180)
+POKE_HP_BG = (255, 255, 255)
+POKE_HP_BORDER = (80, 120, 180)
+POKE_HP_BAR = (80, 200, 80)
+POKE_BTN = (240, 240, 255)
+POKE_BTN_BORDER = (80, 120, 180)
+POKE_BTN_HOVER = (200, 220, 255)
+POKE_SHADOW = (100, 100, 100, 80)
 
 # Création de la fenêtre
 screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 pygame.display.set_caption("Monster Battle Game")
 
 # Fonts
-FONT = pygame.font.SysFont('Arial', 20)
-LARGE_FONT = pygame.font.SysFont('Arial', 32)
+FONT = pygame.font.SysFont('Verdana', 22)
+LARGE_FONT = pygame.font.SysFont('Comic Sans MS', 36)
 
 class Button:
     def __init__(self, x, y, width, height, text, color=BLUE):
@@ -43,12 +55,18 @@ class Button:
         self.is_hovered = False
 
     def draw(self, surface):
-        color = self.color if not self.is_hovered else (min(255, self.color[0] + 30), 
-                                                       min(255, self.color[1] + 30),
-                                                       min(255, self.color[2] + 30))
-        pygame.draw.rect(surface, color, self.rect)
-        pygame.draw.rect(surface, BLACK, self.rect, 2)
-        text_surface = FONT.render(self.text, True, WHITE)
+        # Bouton arrondi style Pokémon
+        color = POKE_BTN_HOVER if self.is_hovered else POKE_BTN
+        pygame.draw.rect(surface, color, self.rect, border_radius=18)
+        pygame.draw.rect(surface, POKE_BTN_BORDER, self.rect, 3, border_radius=18)
+        # Ajustement du texte pour ne pas dépasser le bouton
+        max_width = self.rect.width - 16
+        text = self.text
+        text_surface = FONT.render(text, True, POKE_BTN_BORDER)
+        # Si le texte est trop large, on le réduit
+        while text_surface.get_width() > max_width and len(text) > 3:
+            text = text[:-2] + "…"
+            text_surface = FONT.render(text, True, POKE_BTN_BORDER)
         text_rect = text_surface.get_rect(center=self.rect.center)
         surface.blit(text_surface, text_rect)
 
@@ -61,6 +79,53 @@ class Button:
         return False
 
 class BattleScene:
+    # --- Ajout pour animations ---
+    def reset_animation(self):
+        self.anim_state = None
+        self.anim_timer = 0
+        self.anim_attacker = None
+        self.anim_target = None
+        self.anim_attack_name = None
+        self.anim_attack_damage = 0
+        self.anim_hp_start = 0
+        self.anim_hp_end = 0
+        self.anim_hp_current = 0
+        self.anim_callback = None
+
+    def start_attack_animation(self, attacker, target, attack_name, damage, callback):
+        self.anim_state = "attack"
+        self.anim_timer = 20  # frames
+        self.anim_attacker = attacker
+        self.anim_target = target
+        self.anim_attack_name = attack_name
+        self.anim_attack_damage = damage
+        self.anim_hp_start = target.current_hp
+        self.anim_hp_end = max(0, target.current_hp - damage)
+        self.anim_hp_current = self.anim_hp_start
+        self.anim_callback = callback
+
+    def update_animation(self):
+        if self.anim_state == "attack":
+            self.anim_timer -= 1
+            if self.anim_timer == 0:
+                # Commence l'animation de barre de vie
+                self.anim_state = "hp"
+                self.anim_timer = 20
+        elif self.anim_state == "hp":
+            # Animation de barre de vie qui baisse
+            progress = 1 - self.anim_timer / 20
+            self.anim_hp_current = int(self.anim_hp_start - (self.anim_hp_start - self.anim_hp_end) * progress)
+            self.anim_timer -= 1
+            if self.anim_timer == 0:
+                self.anim_hp_current = self.anim_hp_end
+                self.anim_state = None
+                # Applique les dégâts réels
+                self.anim_target.current_hp = self.anim_hp_end
+                if self.anim_callback:
+                    self.anim_callback()
+
+    def is_animating(self):
+        return self.anim_state is not None
     def __init__(self, player_monsters, enemy_monster, inventory):
         self.player_monsters = player_monsters
         self.current_monster = player_monsters[0]
@@ -129,26 +194,51 @@ class BattleScene:
             print(f"Image non trouvée : {img_path}")
         return None
 
-    def draw_monster_info(self, monster, x, y, is_enemy=False):
+    def draw_monster_info(self, monster, x, y, is_enemy=False, anim_hp=None, anim_attack=False):
+        # Ombre sous le monstre
+        shadow_rect = pygame.Rect(x+18, y+MONSTER_SIZE-10, MONSTER_SIZE-36, 24)
+        pygame.draw.ellipse(screen, POKE_SHADOW, shadow_rect)
+        # Cadre arrondi style Pokémon
+        panel_rect = pygame.Rect(x-10, y-10, MONSTER_SIZE+20, MONSTER_SIZE+80)
+        pygame.draw.rect(screen, POKE_PANEL, panel_rect, border_radius=24)
+        pygame.draw.rect(screen, POKE_PANEL_BORDER, panel_rect, 4, border_radius=24)
+        # Animation d'attaque (effet de flash ou déplacement)
+        img_x = x
+        img_y = y
+        if anim_attack:
+            img_x += 18 if not is_enemy else -18
+            img_y -= 10
         # Afficher l'image PNG si elle existe
         img = self.load_monster_image(monster.name)
         if img:
             img = pygame.transform.scale(img, (MONSTER_SIZE, MONSTER_SIZE))
-            screen.blit(img, (x, y))
+            screen.blit(img, (img_x, img_y))
+            if anim_attack:
+                s = pygame.Surface((MONSTER_SIZE, MONSTER_SIZE), pygame.SRCALPHA)
+                s.fill((255,255,0,80))
+                screen.blit(s, (img_x, img_y))
         else:
-            monster_rect = pygame.Rect(x, y, MONSTER_SIZE, MONSTER_SIZE)
-            pygame.draw.rect(screen, GRAY, monster_rect)
-        # Barre de vie
-        health_percent = monster.current_hp / monster.max_hp
-        health_width = MONSTER_SIZE * health_percent
-        health_rect = pygame.Rect(x, y + MONSTER_SIZE + 10, MONSTER_SIZE, 20)
-        pygame.draw.rect(screen, RED, health_rect)
-        pygame.draw.rect(screen, GREEN, (x, y + MONSTER_SIZE + 10, health_width, 20))
-        # Informations du monstre
-        name_text = FONT.render(f"{monster.name} Nv.{monster.level}", True, BLACK)
-        hp_text = FONT.render(f"PV: {monster.current_hp}/{monster.max_hp}", True, BLACK)
-        screen.blit(name_text, (x, y + MONSTER_SIZE + 35))
-        screen.blit(hp_text, (x, y + MONSTER_SIZE + 55))
+            monster_rect = pygame.Rect(img_x, img_y, MONSTER_SIZE, MONSTER_SIZE)
+            pygame.draw.rect(screen, GRAY, monster_rect, border_radius=18)
+        # Barre de vie style Pokémon
+        hp_val = anim_hp if anim_hp is not None else monster.current_hp
+        health_percent = hp_val / monster.max_hp
+        health_width = int(MONSTER_SIZE * health_percent)
+        hp_bg_rect = pygame.Rect(x+10, y + MONSTER_SIZE + 18, MONSTER_SIZE-20, 18)
+        pygame.draw.rect(screen, POKE_HP_BG, hp_bg_rect, border_radius=10)
+        pygame.draw.rect(screen, POKE_HP_BORDER, hp_bg_rect, 2, border_radius=10)
+        hp_bar_rect = pygame.Rect(x+12, y + MONSTER_SIZE + 20, health_width-24 if health_width>24 else 0, 14)
+        pygame.draw.rect(screen, POKE_HP_BAR, hp_bar_rect, border_radius=7)
+        # Nom du monstre dans une bulle arrondie
+        name_rect = pygame.Rect(x+MONSTER_SIZE//2-60, y-32, 120, 32)
+        pygame.draw.rect(screen, POKE_PANEL, name_rect, border_radius=16)
+        pygame.draw.rect(screen, POKE_PANEL_BORDER, name_rect, 2, border_radius=16)
+        name_text = FONT.render(f"{monster.name} Nv.{monster.level}", True, POKE_PANEL_BORDER)
+        name_text_rect = name_text.get_rect(center=name_rect.center)
+        screen.blit(name_text, name_text_rect)
+        # PV
+        hp_text = FONT.render(f"PV: {hp_val}/{monster.max_hp}", True, POKE_HP_BORDER)
+        screen.blit(hp_text, (x+MONSTER_SIZE//2-60, y + MONSTER_SIZE + 42))
 
     def show_message(self, message, duration=60):
         self.message = message
@@ -185,14 +275,39 @@ class BattleScene:
             button.draw(screen)
 
     def draw(self):
-        screen.fill(WHITE)
-        self.draw_monster_info(self.enemy_monster, WINDOW_WIDTH - MONSTER_SIZE - 50, 50, True)
-        self.draw_monster_info(self.current_monster, 50, WINDOW_HEIGHT - MONSTER_SIZE - 150)
+        # Fond dégradé style Pokémon
+        for y in range(WINDOW_HEIGHT):
+            color = [
+                int(POKE_BG_TOP[i] + (POKE_BG_BOTTOM[i] - POKE_BG_TOP[i]) * y / WINDOW_HEIGHT)
+                for i in range(3)
+            ]
+            pygame.draw.line(screen, color, (0, y), (WINDOW_WIDTH, y))
+        # Animation
+        if self.is_animating():
+            # Attaque du joueur ou de l'ennemi
+            if self.anim_attacker == self.current_monster:
+                self.draw_monster_info(self.enemy_monster, WINDOW_WIDTH - MONSTER_SIZE - 50, 50, True,
+                                      anim_hp=self.anim_hp_current if self.anim_target==self.enemy_monster else None)
+                self.draw_monster_info(self.current_monster, 50, WINDOW_HEIGHT - MONSTER_SIZE - 150,
+                                      anim_hp=None,
+                                      anim_attack=(self.anim_state=="attack"))
+            else:
+                self.draw_monster_info(self.enemy_monster, WINDOW_WIDTH - MONSTER_SIZE - 50, 50, True,
+                                      anim_hp=None,
+                                      anim_attack=(self.anim_state=="attack"))
+                self.draw_monster_info(self.current_monster, 50, WINDOW_HEIGHT - MONSTER_SIZE - 150,
+                                      anim_hp=self.anim_hp_current if self.anim_target==self.current_monster else None)
+        else:
+            self.draw_monster_info(self.enemy_monster, WINDOW_WIDTH - MONSTER_SIZE - 50, 50, True)
+            self.draw_monster_info(self.current_monster, 50, WINDOW_HEIGHT - MONSTER_SIZE - 150)
         self.draw_monster_selection()
-        # Dessiner le message
+        # Message dans une bulle arrondie
         if self.message:
-            text = FONT.render(self.message, True, BLACK)
-            text_rect = text.get_rect(center=(WINDOW_WIDTH // 2, 30))
+            msg_rect = pygame.Rect(WINDOW_WIDTH//2-180, 18, 360, 38)
+            pygame.draw.rect(screen, POKE_PANEL, msg_rect, border_radius=16)
+            pygame.draw.rect(screen, POKE_PANEL_BORDER, msg_rect, 2, border_radius=16)
+            text = FONT.render(self.message, True, POKE_PANEL_BORDER)
+            text_rect = text.get_rect(center=msg_rect.center)
             screen.blit(text, text_rect)
         # Zone fixe pour tous les menus
         if self.state == "MAIN":
@@ -362,13 +477,13 @@ def main():
     
     battle_scene = BattleScene(player_monsters, enemy_monster, inventory)
     clock = pygame.time.Clock()
-    
-    # Boucle principale
+    battle_scene.reset_animation()
     running = True
     battles_won = 0
     show_upgrade = False
     upgrade_pending = False
     upgrade_applied = False
+    enemy_attack_pending = False
     while running:
         # Gestion du pop-up d'amélioration dans une boucle dédiée
         if show_upgrade:
@@ -402,18 +517,45 @@ def main():
                 clock.tick(60)
             continue  # Recommence la boucle principale après le choix
 
+        # Animation d'attaque en cours
+        if battle_scene.is_animating():
+            battle_scene.update_animation()
+            battle_scene.draw()
+            clock.tick(60)
+            continue
+
         # Gestion normale des événements
         for event in pygame.event.get():
             result = battle_scene.handle_event(event)
             if result == "QUIT":
                 running = False
             elif result == "ENEMY_TURN":
-                # Tour de l'ennemi
+                # Lance animation d'attaque du joueur
                 attack = random.choice(enemy_monster.attacks)
-                damage = enemy_monster.get_attack_damage(attack.damage)
-                battle_scene.current_monster.take_damage(damage)
-                enemy_monster.heal(attack.heal)
-                battle_scene.show_message(f"{enemy_monster.name} utilise {attack.name}!")
+                def enemy_counter():
+                    # Animation de contre-attaque de l'ennemi
+                    battle_scene.start_attack_animation(
+                        battle_scene.enemy_monster,
+                        battle_scene.current_monster,
+                        attack.name,
+                        attack.damage,
+                        None
+                    )
+                    battle_scene.show_message(f"{enemy_monster.name} utilise {attack.name}!")
+                # Animation d'attaque du joueur
+                last_attack = battle_scene.current_monster.attacks[0] if hasattr(battle_scene.current_monster, 'attacks') else None
+                # On récupère le nom et les dégâts de la dernière attaque utilisée
+                # Pour cela, on modifie handle_event pour stocker l'attaque utilisée
+                # Ici, on suppose que le joueur vient d'attaquer
+                # On lance l'animation d'attaque du joueur
+                battle_scene.start_attack_animation(
+                    battle_scene.current_monster,
+                    battle_scene.enemy_monster,
+                    last_attack.name if last_attack else "Attaque",
+                    last_attack.damage if last_attack else 20,
+                    enemy_counter
+                )
+                battle_scene.show_message(f"{battle_scene.current_monster.name} utilise {last_attack.name if last_attack else 'Attaque'}!")
 
         # Vérification victoire
         if not enemy_monster.is_alive():
@@ -434,6 +576,7 @@ def main():
 
         battle_scene.update_message()
         battle_scene.draw()
+        clock.tick(60)
         clock.tick(60)
     
     pygame.quit()
